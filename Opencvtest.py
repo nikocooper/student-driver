@@ -1,6 +1,4 @@
-#Liam
-
-#obama - Arlo
+#obama
 import cv2
 from tracker import *
 
