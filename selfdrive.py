@@ -1,9 +1,8 @@
 import cv2 
 import numpy as np
-from tracker import *
 
-# create tracker object
-tracker = EuclideanDistTracker() 
+
+
 
 # define colors and hold current robot mode(flipped over or right side up)
 yellow = [0, 255, 255]
@@ -46,8 +45,7 @@ while True:
     _, mask = cv2.threshold(mask, 254, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
-    detections = [] # holds detected bots
-    if totalframes % 18 == 0:
+    if totalframes % 13 == 0:
         maybe = []
     #color detection, clr1 = yellow and clr2 = orange
     hsvImage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -60,7 +58,7 @@ while True:
         if area > 3000:
             area_hold = area
             x, y, w, h = cv2.boundingRect(cnt)
-            if totalframes % 18 == 0:
+            if totalframes % 13 == 0:
                 maybe.append([[x, y], 1, [], [], area])
             else:
                 while len(maybe) < 10:
@@ -73,7 +71,7 @@ while True:
                                 pos.insert(0, x)
                                 bot = [pos, ct, v, predict, area]
                                 break
-                            elif totalframes % 18 == 1:
+                            elif totalframes % 13 == 1:
                                 maybe.append([[x, y], 1, [], [], area]) 
                                 break
                         else:
@@ -127,7 +125,7 @@ while True:
             x1, y1, w1, h1 = cv2.boundingRect(clr1cnt)
             
             cv2.rectangle(frame, (x1,y1), (x1 + w1, y1 + h1), (255, 0, 150), 3)
-            detections.append([x1, y1, w1, h1])
+
             clr1 = True
 
     clr2contours, _ = cv2.findContours(clr2mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -139,7 +137,7 @@ while True:
         if abs(clr2area - area_hold) < 100 :
             x2, y2, w2, h2 = cv2.boundingRect(clr2cnt)
             cv2.rectangle(frame, (x2,y2), (x2 + w2, y2 + h2), (255, 0, 0), 3)
-            detections.append([x2, y2, w2, h2])
+
             clr2 = True
 
     #track where colored image is and what colors are present
@@ -156,12 +154,9 @@ while True:
     else: 
         color_position = [0,0,0,0]
     
-    # update the tracker
-    bots = tracker.update(detections, color_position, colors_seen)
     
     totalframes += 1
     cv2.imshow("Frame", frame)
-    cv2.imshow("yellow", clr1mask)
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break
 cap.release()
