@@ -23,8 +23,7 @@ class EuclideanDistTracker:
             #cx1 = (x1 + x1 + w1) // 2
             #cy1 = (y1 + y1 + h1) // 2
         # check for color
-        if new_color is not None:
-            self.color = new_color
+        self.color = new_color
         # Get center point of new object
         for rect in objects_rect:
             x, y, w, h = rect
@@ -68,5 +67,5 @@ class EuclideanDistTracker:
 
         # Update dictionary with IDs not used removed
         self.center_points = new_center_points.copy()
-        print(new_color)
-        return objects_bbs_ids
+        #print(new_color)
+        #return objects_bbs_ids

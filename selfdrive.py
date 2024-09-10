@@ -25,18 +25,14 @@ yellow_lower_limit, yellow_upper_limit = color_limits(yellow)
 orange_lower_limit, orange_upper_limit = color_limits(orange)
 
 # retrieve video
-cap = cv2.VideoCapture("testbot.mp4")
+cap = cv2.VideoCapture("tracktest3.mp4")
 
 # motion detector
-robotect = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=40)
+robotect = cv2.createBackgroundSubtractorMOG2()
 
 maybe = []
 totalframes = 1
-x_estimate = 0
-y_estimate = 0
 area_hold = 2500
-x1_estimate = 0
-y1_estimate = 0
 
 # creates colored rectangles around robots and specific colors on each frame
 while True:
@@ -51,9 +47,8 @@ while True:
     contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
     detections = [] # holds detected bots
-    if totalframes % 50 == 0:
+    if totalframes % 18 == 0:
         maybe = []
-
     #color detection, clr1 = yellow and clr2 = orange
     hsvImage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     clr1mask = cv2.inRange(hsvImage, yellow_lower_limit, yellow_upper_limit)
@@ -65,43 +60,64 @@ while True:
         if area > 3000:
             area_hold = area
             x, y, w, h = cv2.boundingRect(cnt)
-            if totalframes % 50 == 0:
-                maybe.append([[x, y], 1])
-            bot_counts = [500000]
-            for bot in maybe:
-                pos, ct = bot
-                if abs(x - pos[0]) < 100 and abs(y - pos[1]) < 100:
-                    maybe[maybe.index(bot)][1] += 1
-                    pos[0] = x
-                    pos[1] = y
-            for bot in maybe:
-                bot_counts.append(ct)
-            if len(bot_counts) <= 1:
-                if 3 >= 2000/totalframes:
-                    while len(maybe) > 3:
-                        smallest = bot_counts.pop(bot_counts.index(min(bot_counts)))
-                        for robot in maybe:
-                            if robot[1] == smallest:
-                                maybe.pop(maybe.index(bot))
-                    else:
-                        while len(maybe) > 2000/totalframes:
-                            smallest = bot_counts.pop(bot_counts.index(min(bot_counts)))
-                            for bot in maybe:
-                                if bot[1] == smallest:
-                                    maybe.pop(maybe.index(bot))
-    for bot in maybe:
-        pos, ct = bot
-        if totalframes % 5 == 0:
-            if totalframes % 50 != 0:
-                d_x = (pos[0] - x_estimate)
-                d_y = (pos[1] - y_estimate)
-                x_estimate = pos[0] + d_x
-                y_estimate = pos[1] + d_y
+            if totalframes % 18 == 0:
+                maybe.append([[x, y], 1, [], [], area])
             else:
-                x_estimate = pos[0]
-                y_estimate = pos[1]
-        cv2.rectangle(frame, (x_estimate,y_estimate), (x_estimate + w, y_estimate + h), (33, 222, 255), 3)
-        detections.append([x, y, w, h])
+                while len(maybe) < 10:
+                    for bot in maybe:
+                        pos, ct, v, predict, pos_area = bot
+                        if len(maybe) < 2 or v == []:
+                            if abs(pos_area - area) < 500  and (abs(y - pos[1]) < 200 or abs(x - pos[0]) < 200):
+                                ct += 1
+                                pos.insert(0, y)
+                                pos.insert(0, x)
+                                bot = [pos, ct, v, predict, area]
+                                break
+                            elif totalframes % 18 == 1:
+                                maybe.append([[x, y], 1, [], [], area]) 
+                                break
+                        else:
+                            if abs(x - pos[0]) < 500  and abs(y - pos[1]) < 500:
+                                ct += 1
+                                pos.insert(0, y)
+                                pos.insert(0, x)
+                                bot = [pos, ct, v, predict, area]
+                                break
+                    break
+    two_in_one = False
+    bot_holder = []
+    while len(maybe) > 4 and not two_in_one:
+        area_tracker = []
+        for bot in maybe:
+            _, _, _, _, pos_area = bot
+            if pos_area > 8000:
+                two_in_one = True
+                bot_holder = bot
+            area_tracker.append(pos_area)
+        min_area = min(area_tracker)
+        for bot in maybe:
+            _, _, _, _, pos_area = bot
+            if pos_area == min_area:
+                maybe.remove(bot)
+    i = 5
+    while i > 0 and len(maybe) > 2:
+        for bot in maybe:
+            for bot2 in maybe:
+                if bot != bot2:
+                    pos, _, _, _, _ = bot
+                    pos2, _, _, _, _ = bot2
+                    if abs(pos[0] - pos2[0]) < 100 / i and abs(pos[1] - pos2[1]) < 100 / i:
+                        maybe.remove(bot)
+                        break 
+        i -= 1 
+
+    if two_in_one:
+        pos, _, _, _, _ = bot_holder
+        cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3)
+    else:
+        for bot in maybe:
+            pos, _, _,_,_ = bot
+            cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3) 
     # check for yellow
     clr1 = False
     for clr1cnt in clr1contours:
@@ -142,7 +158,6 @@ while True:
     
     # update the tracker
     bots = tracker.update(detections, color_position, colors_seen)
-    print(bots)
     
     totalframes += 1
     cv2.imshow("Frame", frame)
