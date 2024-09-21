@@ -51,6 +51,7 @@ together = True
 upright_hold = True
 color_position = []
 color_position_hold = []
+mini_holder = []
 
 # creates colored rectangles around robots and specific colors on each frame
 while True:
@@ -64,7 +65,7 @@ while True:
     _, mask = cv2.threshold(mask, 254, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    if totalframes % 13 == 0:
+    if totalframes % 6 == 0:
         good_track = True
         for bot in maybe:
             if bot[1] < 5:
@@ -86,32 +87,11 @@ while True:
                 if area_hold > 40000:
                     area_hold = 40000
             x, y, w, h = cv2.boundingRect(cnt)
-            if totalframes % 13 == 0:
-                maybe.append([[x, y], 1, [], [], area, [], [], []])
-            else:
-                while len(maybe) < 10:
-                    for bot in maybe:
-                        pos, ct, v, predict, pos_area, color, front, center = bot
-                        if len(maybe) < 2 or v == []:
-                            if abs(pos_area - area) < 500  and (abs(y - pos[1]) < 200 or abs(x - pos[0]) < 200):
-                                ct += 1
-                                pos.insert(0, y)
-                                pos.insert(0, x)
-                                bot = [pos, ct, v, predict, area, color, front, center]
-                                break
-                            elif totalframes % 13 == 1:
-                                maybe.append([[x, y], 1, [], [], area, [], [], []]) 
-                                break
-                        else:
-                            if abs(x - predict[0]) < 100  and abs(y - predict[1]) < 100:
-                                ct += 1
-                                pos.insert(0, y)
-                                pos.insert(0, x)
-                                bot = [pos, ct, v, predict, area, color, front, center]
-                                break
-                    break
+            maybe.append([[x,y], 1, [], [], area, [], [], []])
+
     two_in_one = False
     bot_holder = []
+    max_bot = []
     while len(maybe) > 4 and not two_in_one:
         area_tracker = []
         for bot in maybe:
@@ -121,10 +101,13 @@ while True:
                 bot_holder = bot
             area_tracker.append(pos_area)
         min_area = min(area_tracker)
+        max_area = max(area_tracker)
         for bot in maybe:
             pos_area = bot[4]
             if pos_area == min_area:
                 maybe.remove(bot)
+            if pos_area == max_area:
+                max_bot = bot
     i = 5
     together_mem = together
     together = True
@@ -140,10 +123,12 @@ while True:
                         maybe.remove(bot)
                         break 
         if i <= 1:
-            i -= 0.25
+            i -= i / 2
         else:
             i -= 1 
-
+    if color_based:
+        pos, _,_,_,_,_,_,_ = max_bot
+        cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3)
     if two_in_one and together and together_mem:
         pos, _, _, _, _,_, _, _ = bot_holder
         cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3)
@@ -160,16 +145,14 @@ while True:
             x1, y1, w1, h1 = cv2.boundingRect(clr1cnt)
             minimum = 100000
             min_bot = []
-            for bot in maybe:
+            for i in range(len(maybe)):
+                bot = maybe[i]
                 pos, ct, v, predict, pos_area, color, front, center = bot
-                if abs(x1 - pos[0]) < 100 and abs(y1 - pos[1]) < 100:
+                if ((x1 - pos[0]) ** 2 + ((y1 - pos[1]) ** 2)) ** 0.5 < 100:
                     color = yellow
-                    bot = [pos, ct, v, predict, pos_area, color, front, center]
+                    maybe[i] = [pos, ct, v, predict, pos_area, color, front, center]
                 if color_based:
-                    if ((x1 - pos[0]) ** 2 + (y1 - pos[1]) ** 2) ** 0.5 < minimum:
-                        minimum = abs(x1 - pos[0]) + abs(y1 - pos[1])
-                        min_bot = bot
-                    maybe = [min_bot, [[x1, y1], 1, [], [], clr1area, yellow, [], [], []]]
+                    maybe = [max_bot, [[x1, y1], 1, [], [], clr1area, yellow, [], [], []]]
                     break 
             cv2.rectangle(frame, (x1,y1), (x1 + w1, y1 + h1), (255, 0, 150), 3)
 
@@ -191,21 +174,35 @@ while True:
             cv2.rectangle(frame, (x2,y2), (x2 + w2, y2 + h2), (255, 0, 0), 3)
 
             clr2 = True
-    for bot in maybe:
+    for j  in range(len(maybe)):
+        bot = maybe[j]
         pos, ct, v, predict, pos_area, color, front, center = bot
-        v = (((pos[0] - pos[-2]) / (len(pos) / 2)) * 12, ((pos[1] - pos[-1]) / (len(pos) / 2)) * 12)
-        predict = [pos[0] + v[0], pos[1] + v[1]]
-        if v[0] < 0:
-            x_comp = x
-        else:
-            x_comp = x + pos_area ** 0.5
-        if v[1] > 0:
-            y_comp = y
-        else:
-            y_comp = y + pos_area ** 0.5
-        front = [x_comp, y_comp]
-        center = [x + pos_area ** 0.5 / 2, y + pos_area ** 0.5 / 2]
-        bot = [pos, ct, v, predict, pos_area, color, front, center]
+        min_distance = 100000
+        pos_hold = []
+        for i in range(len(mini_holder)):
+            position = mini_holder[i]
+            distance = ((pos[0] - position[0]) ** 2 + (pos[1] - position[1]) ** 2) ** 0.5
+            if distance < min_distance:
+                min_distance = distance
+                pos_hold = position
+        if pos_hold != []:
+            pos.append(pos_hold[0])
+            pos.append(pos_hold[1])
+        maybe[j] = [pos, ct, v, predict, pos_area, color, front, center]
+        if len(pos) > 2:
+            v = [((pos[0] - pos[-2]) / (len(pos) / 2)), ((pos[1] - pos[-1]) / (len(pos) / 2))]
+            predict = [pos[0] + v[0], pos[1] + v[1]]
+            if v[0] < 0:
+                x_comp = x
+            else:
+                x_comp = x + pos_area ** 0.5
+            if v[1] > 0:
+                y_comp = y
+            else:
+                y_comp = y + pos_area ** 0.5
+            front = [x_comp, y_comp]
+            center = [x + pos_area ** 0.5 / 2, y + pos_area ** 0.5 / 2]
+            maybe[j] = [pos, ct, v, predict, pos_area, color, front, center]
 
     if totalframes % 4 == 0:
 
@@ -233,9 +230,8 @@ while True:
             enemy = bot
         else:
             homeboy = bot
-    if not homeboy:
-        color_based == True
-        pass # switch to color based tracking
+    if not homeboy or (two_in_one and together and together_mem):
+        color_based == True # switch to color based tracking
     if homeboy[5] == yellow:
         # check if weapon timer is up
         if enemy[2] != []:
@@ -252,11 +248,19 @@ while True:
                 pass # turn towards enemy
     elif homeboy[5] == orange:
         pass #fire weapon repeatedly between timers
-            
+    
+    for bot in maybe:
+        pos, _, _, _, _, _, _, _ = bot
+        mini_holder.append(pos)
+
     totalframes += 1
     if weapon_timer > 0:
         weapon_timer -= 1
     cv2.imshow("Frame", frame)
+    v_hold = []
+    for bot in maybe:
+        v_hold.append(bot[2])
+    print(v_hold)
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break
 cap.release()
