@@ -51,10 +51,16 @@ yellow_lower_limit, yellow_upper_limit = color_limits(yellow)
 orange_lower_limit, orange_upper_limit = color_limits(orange)
 
 # retrieve video
-cap = cv2.VideoCapture("tracktest7.mp4")
-
+cap = cv2.VideoCapture("tracktest8.mp4")
+# check for Nvidia GPU
+Nvidia = False
+if cv2.cuda.getCudaEnabledDeviceCount() != 0:
+    Nvidia = True
 # motion detector
-robotect = cv2.createBackgroundSubtractorMOG2()
+if Nvidia:
+    robotect = cv2.cuda.createBackgroundSubtractor()
+else:
+    robotect = cv2.createBackgroundSubtractorMOG2()
 
 # globals
 maybe = []
@@ -74,10 +80,10 @@ message_hold = dict()
 message_hold["direction"] = 2
 message_hold["forward"] = 0
 message_hold["fire"] = 0
-
+m = time.time()
 # creates colored rectangles around robots and specific colors on each frame
 while True:
-        t = time.time()
+        time_list = []
         message = ""
         ret, frame = cap.read()
         if not ret:
@@ -85,24 +91,37 @@ while True:
             continue
     #if totalframes % int(cap.get(cv2.CAP_PROP_FPS) / 10) == 0:
         # motion detection
-        mask = robotect.apply(frame)
+        if Nvidia:
+            gpu_frame = cv2.cuda_GpuMat(frame)
+            gpu_frame.upload(frame)
+            gpu_mask = robotect.apply(gpu_frame)
+            gpu_hsvImage = cv2.cuda.cvtColor(gpu_frame, cv2.COLOR_BGR2HSV)
+            gpu_clr1mask = cv2.cuda.inRange(gpu_hsvImage, yellow_lower_limit, yellow_upper_limit)
+            gpu_clr2mask = cv2.cuda.inRange(gpu_hsvImage, orange_lower_limit, orange_upper_limit)
+            mask = gpu_mask.download()
+            clr1mask = gpu_clr1mask.download()
+            clr2mask = gpu_clr2mask.download()
+        else:
+            t = time.time()
+            mask = robotect.apply(frame)
+            hsvImage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            clr1mask = cv2.inRange(hsvImage, yellow_lower_limit, yellow_upper_limit)
+            clr2mask = cv2.inRange(hsvImage, orange_lower_limit, orange_upper_limit)
+        time_list.append(time.time() - t)
+        t = time.time()
         _, mask = cv2.threshold(mask, 254, 255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
+        #color detection, clr1 = yellow and clr2 = orange
+        clr1contours, _ = cv2.findContours(clr1mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         # reset tracking every 6 frames if tracking is not good
         if totalframes % 6 == 0:
             good_track = True
             for bot in maybe:
-                if bot[1] < 5:
+                if bot[1] < 4:
                     good_track = False
-            if not good_track or 24 == 0:
+            if not good_track or totalframes % 24 == 0:
                 maybe = []
                 color_based = False
-        #color detection, clr1 = yellow and clr2 = orange
-        hsvImage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        clr1mask = cv2.inRange(hsvImage, yellow_lower_limit, yellow_upper_limit)
-        clr2mask = cv2.inRange(hsvImage, orange_lower_limit, orange_upper_limit)
-        clr1contours, _ = cv2.findContours(clr1mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             # create rectangle and add to collection of possible robots
         for cnt in contours:
             area = cv2.contourArea(cnt)
@@ -145,10 +164,11 @@ while True:
                 position = mini_holder[i]
                 distance = ((pos[0] - position[0]) ** 2 + (pos[1] - position[1]) ** 2) ** 0.5
                 if distance < min_distance:
-                    if distance < ((v[0] ** 2) + (v[1] ** 2) ** 0.5) * 2 if v != [] else 300:
+                    if distance < ((v[0] ** 2) + (v[1] ** 2) ** 0.5) * 3 if v != [] else 300:
                         min_distance = distance
                         pos_hold = position
             # update robot position and count
+            # {[x,y], count, velocity, predicted position, area, color, front, center}
             if pos_hold != []:  
                 pos.append(pos_hold[0])
                 pos.append(pos_hold[1])
@@ -264,6 +284,7 @@ while True:
             if upright_hold == upright:
                 color_position = color_position_hold
 
+
         homeboy = [[],[],[],[],[],[],[]]
         enemy = [[],[],[],[],[],[],[]]
         for bot in maybe:
@@ -299,6 +320,7 @@ while True:
                             if turn_size(homeboy[5], homeboy[6], enemy[6]) > 0.2:
                                 message_hold["direction"] = turn_direction(homeboy[5], homeboy[6], enemy[6])
                 else:
+                    print("f")
                     if ((homeboy[0][0] - enemy[0][0]) ** 2 + (homeboy[0][1] - enemy[0][1]) ** 2) ** 0.5 < 150:
                         pass # turn towards enemy, fire weapon, set timer
                     if ((homeboy[0][0] - enemy[0][0]) ** 2 + (homeboy[0][1] - enemy[0][1]) ** 2) ** 0.5 > 800:
@@ -310,12 +332,6 @@ while True:
                 time.sleep(0.5)
                 print("r")
                 time.sleep(0.5)# fire repeatedly
-        if totalframes % 15 == 0:
-            if "direction" in message_hold and "fire" in message_hold:
-                message_str = str(message_hold["direction"]) + " " + str(message_hold["forward"]) + " " + str(message_hold["fire"])
-                message = message_str.encode("UTF-8")
-                sock.sendto(message, ('<broadcast>', PORT))
-                print(message_str)
         vel = []
         mini_holder = []
         for bot in maybe:
@@ -325,12 +341,21 @@ while True:
         '''if vel != [] and vel != [[0.0,0.0],[0.0,0.0]]:
             print(vel)
         '''
+        if totalframes % 15 == 0:
+            if "direction" in message_hold and "fire" in message_hold:
+                message_str = str(message_hold["direction"]) + " " + str(message_hold["forward"]) + " " + str(message_hold["fire"])
+                message = message_str.encode("UTF-8")
+                sock.sendto(message, ('<broadcast>', PORT))
+                print(vel)
+                print(message_str)
         if weapon_timer > 0:
             weapon_timer -= 1
         cv2.imshow("Frame", frame)
         if cv2.waitKey(1) & 0xFF == ord('x'):
+            print(time.time() - m)
             break
         totalframes += 1
-        print(time.time() - t)
+        time_list.append(time.time() - t)
+        #print(time_list)
 cap.release()
 cv2.destroyAllWindows()
