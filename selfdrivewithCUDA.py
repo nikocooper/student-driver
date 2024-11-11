@@ -338,15 +338,13 @@ while True:
             pos, _, v, predict, _, _, _, _ = bot
             mini_holder.append(pos)
             vel.append(v)
-        '''if vel != [] and vel != [[0.0,0.0],[0.0,0.0]]:
-            print(vel)
-        '''
+        '''if vel != [] and vel != [[0.0,0.0],[0.0,0.0]]:'''
+        print(vel)
         if totalframes % 15 == 0:
             if "direction" in message_hold and "fire" in message_hold:
                 message_str = str(message_hold["direction"]) + " " + str(message_hold["forward"]) + " " + str(message_hold["fire"])
                 message = message_str.encode("UTF-8")
                 sock.sendto(message, ('<broadcast>', PORT))
-                print(vel)
                 print(message_str)
         if weapon_timer > 0:
             weapon_timer -= 1

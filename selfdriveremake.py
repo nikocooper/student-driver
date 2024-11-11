@@ -44,14 +44,14 @@ def turn_size(front, center, enemy):
     return 0
 # finds distance to enemy
 def forward(homeboy, enemy):
-    enemy_vector = [enemy[0] - homeboy[0], enemy[1] - homeboy[1]]
-    return int(np.sqrt(enemy_vector[1] ** 2 + enemy_vector[0] ** 2))
+    enemy_vector = np.array([enemy[0] - homeboy[0], enemy[1] - homeboy[1]])
+    return int(np.linalg.norm(enemy_vector))
 # make color limits
 yellow_lower_limit, yellow_upper_limit = color_limits(yellow)
 orange_lower_limit, orange_upper_limit = color_limits(orange)
 
 # retrieve video
-cap = cv2.VideoCapture("tracktest7.mp4")
+cap = cv2.VideoCapture("tracktest8.mp4")
 
 # motion detector
 robotect = cv2.createBackgroundSubtractorMOG2()
@@ -95,25 +95,67 @@ while True:
             for bot in maybe:
                 if bot[1] < 5:
                     good_track = False
-            if not good_track or 24 == 0:
+            if not good_track or totalframes % 24 == 0:
                 maybe = []
                 color_based = False
+        v_hold = []
+        pos_hold = []
+        for bot in maybe:
+            pos, ct, v, predict, pos_area, color, front, center = bot
+            if v_hold == []:
+                v_hold = v
+                pos_hold = [pos[0], pos[1]]
+            else:
+                if v != []:
+                    if np.linalg.norm(np.array(v)-np.array(v_hold)) < 3 or np.linalg.norm(np.array([pos[0], pos[1]]) - np.array(pos_hold)) < 100:
+                        maybe.remove(bot)
+        positions = []
         #color detection, clr1 = yellow and clr2 = orange
         hsvImage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         clr1mask = cv2.inRange(hsvImage, yellow_lower_limit, yellow_upper_limit)
         clr2mask = cv2.inRange(hsvImage, orange_lower_limit, orange_upper_limit)
         clr1contours, _ = cv2.findContours(clr1mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             # create rectangle and add to collection of possible robots
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if area > 3000:
-                if area > area_hold:
-                    area_hold = area
-                    if area_hold > 40000:
-                        area_hold = 40000
-                x, y, w, h = cv2.boundingRect(cnt)
-                maybe.append([[x,y], 1, [], [], area, [], [], []])
-
+        if len(maybe) < 2:
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area > 3000:
+                    if area > area_hold:
+                        area_hold = area
+                        if area_hold > 40000:
+                            area_hold = 40000
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    maybe.append([[x,y], 1, [], [], area, [], [], [x + ((area ** 0.5) / 2), y + ((area ** 0.5) / 2)]])
+        else:
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area > 3000:
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    positions.append([x,y,area])
+            for bot in maybe:
+                min_distance = 100000
+                pos_hold = []
+                for position in positions:
+                    distance = ((bot[0][0] - position[0]) ** 2 + (bot[0][1] - position[1]) ** 2) ** 0.5
+                    if distance < min_distance:
+                        if distance < (v[0] ** 2 + v[1] ** 2) ** 0.5 * 2 if v != [] else 300 and bot[4] - position[2] < 500:
+                            min_distance = distance
+                            pos_hold = position
+                if pos_hold != []:
+                    bot[0].append(pos_hold[0])
+                    bot[0].append(pos_hold[1])
+                    bot[1] += 1
+                maybe[maybe.index(bot)] = bot
+        rem_bot = []
+        for i in range(len(maybe)):
+            if i+1 in range(len(maybe)):
+                if abs(maybe[i][4]-maybe[i+1][4]) < 45:
+                    if maybe[i][5] == yellow:
+                        rem_bot = maybe[i]
+                    else:
+                        rem_bot = maybe[i+1]
+        if rem_bot != []:
+            maybe.remove(rem_bot)
         # reduce number of possible robots by size(select for largest)
         two_in_one = False
         bot_holder = []
@@ -138,22 +180,11 @@ while True:
         for j  in range(len(maybe)):
             bot = maybe[j]
             pos, ct, v, predict, pos_area, color, front, center = bot
+            x = pos[0]
+            y = pos[1]
             min_distance = 100000
             pos_hold = []
-            # find closest robot position from previous frame
-            for i in range(len(mini_holder)):
-                position = mini_holder[i]
-                distance = ((pos[0] - position[0]) ** 2 + (pos[1] - position[1]) ** 2) ** 0.5
-                if distance < min_distance:
-                    if distance < ((v[0] ** 2) + (v[1] ** 2) ** 0.5) * 2 if v != [] else 300:
-                        min_distance = distance
-                        pos_hold = position
-            # update robot position and count
-            if pos_hold != []:  
-                pos.append(pos_hold[0])
-                pos.append(pos_hold[1])
-                ct += 1
-            maybe[j] = [pos, ct, v, predict, pos_area, color, front, center]
+            center = [int(x + ((pos_area ** 0.5) / 2)), int(y + ((pos_area ** 0.5) / 2))]
             # create velocity and predict next position
             if len(pos) > 2: 
                 new_v = [((pos[0] - pos[-2]) / (len(pos) / 2)), ((pos[1] - pos[-1]) / (len(pos) / 2))]
@@ -162,17 +193,9 @@ while True:
                 else:
                     v = [(v[0] + new_v[0]) / 2, (v[1] + new_v[1]) / 2]
                 predict = [pos[0] + v[0], pos[1] + v[1]]
-                #locate front and center of robot
-                if v[0] < 0:
-                    x_comp = x
-                else:
-                    x_comp = x + pos_area ** 0.5
-                if v[1] > 0:
-                    y_comp = y
-                else:
-                    y_comp = y + pos_area ** 0.5
-                front = [x_comp, y_comp]
-            center = [x + pos_area ** 0.5 / 2, y + pos_area ** 0.5 / 2]
+                #locate front of robot 
+                v_magnitude = max(int((v[0] ** 2 + v[1] ** 2) ** 0.5), 1)
+                front = [center[0] - int((v[0]/v_magnitude)*(pos_area ** 0.5 / 2)), center[1] - int((v[1]/v_magnitude)*(pos_area ** 0.5 / 2))]
             maybe[j] = [pos, ct, v, predict, pos_area, color, front, center]
         # reduce number of possible robots by count(select for 2 bots with most counts in last 6 frames)
         if len(maybe) > 0:
@@ -185,14 +208,14 @@ while True:
             if len(maybe) > 0:
                 max_count = 0
                 for bot in maybe:
-                    if bot[1] > max_count:
+                    if bot[1] > max_count and np.linalg.norm(np.array([bot[0][0], bot[0][1]]) - np.array([bot_mem[0][0], bot_mem[0][1]])) > bot_mem[4] ** 0.5 / 2:
                         max_count = bot[1]
                         bot_mem2 = bot
                 maybe = [bot_mem, bot_mem2]
             else: 
                 maybe = [bot_mem]
         # draw motion capture rectangles around robots
-        if color_based:
+        if color_based and max_bot != []:
             pos, _,_,_,_,_,_,_ = max_bot
             cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3)
         elif two_in_one and together and not color_based: # add 'and together_mem'
@@ -200,8 +223,13 @@ while True:
             cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3)
         else:
             for bot in maybe:
-                pos, _, _,_,_,_, _, _ = bot
-                cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3) 
+                pos, _, _,_,_,_, front, center = bot
+                if center != []:
+                    cv2.rectangle(frame, (center[0], center[1]), (center[0] + 100, center[1] + 100), (0, 0, 255), 3)
+                else:
+                    cv2.rectangle(frame, (pos[0], pos[1]), (pos[0] + 100, pos[1] + 100), (0, 0, 255), 3) 
+                if front != []:
+                    cv2.rectangle(frame, (front[0], front[1]), (front[0] + 10, front[1] + 10), (255,0,0), 3)
         # check for yellow
         clr1 = False
         max_area = 0
@@ -220,12 +248,31 @@ while True:
                 if ((x1 - pos[0]) ** 2 + ((y1 - pos[1]) ** 2)) ** 0.5 < min_dist:
                     min_dist = ((x1 - pos[0]) ** 2 + ((y1 - pos[1]) ** 2)) ** 0.5
                     min_bot = bot
+            if min_dist > 250:
+                color_based = True
+            elif min_dist < 250 and len(maybe) > 1:
+                color_based = False
             for bot in maybe:
                 if bot == min_bot:
+                    bot[0][0] = x1
+                    bot[0][1] = y1
                     bot[5] = yellow
                     maybe[maybe.index(bot)] = bot
-            if color_based:
-                maybe = [max_bot, [[x1, y1], 1, [], [], clr1area, yellow, [], [], []]] 
+                else:
+                    bot[5] = []
+            if color_based and max_bot != []:
+                color_mem = [[],[],[],[],[],[],[],[]]
+                for bot in maybe:
+                    if bot[5] == yellow:
+                        if bot == max_bot:
+                            for bot in maybe:
+                                if bot != max_bot:
+                                    max_bot = bot
+                                    break
+                        bot[0][0] = x1
+                        bot[0][1] = y1
+                        color_mem = bot
+                maybe = [max_bot, color_mem]
             cv2.rectangle(frame, (x1,y1), (x1 + w1, y1 + h1), (255, 0, 150), 3)
         clr2contours, _ = cv2.findContours(clr2mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -239,7 +286,7 @@ while True:
                     pos, ct, v, predict, pos_area,color, center = bot
                     if abs(x1 - pos[0]) < 100 and abs(y1 - pos[1]) < 100:
                         color = orange
-                        bot = [pos, ct, v, predict, pos_area, color, center]
+                        bot = [pos, ct, v, predict, pos_area, color, front, center]
                 cv2.rectangle(frame, (x2,y2), (x2 + w2, y2 + h2), (255, 0, 0), 3)
 
                 clr2 = True
@@ -257,15 +304,24 @@ while True:
                 upright = True
                 color_position_hold = [x2, y2, w2, h2]
             else: 
-
                 color_position_hold = [0,0,0,0]
             upright_hold = upright
         if totalframes % 4 == 3:
             if upright_hold == upright:
                 color_position = color_position_hold
-
+        rem_bot = []
+        for i in range(len(maybe)):
+            if i+1 in range(len(maybe)):
+                if abs(maybe[i][4]-maybe[i+1][4]) < 45:
+                    if maybe[i][5] == yellow:
+                        rem_bot = maybe[i]
+                    else:
+                        rem_bot = maybe[i+1]
+        if rem_bot != []:
+            maybe.remove(rem_bot)
         homeboy = [[],[],[],[],[],[],[]]
         enemy = [[],[],[],[],[],[],[]]
+        buildStr = ""
         for bot in maybe:
             if bot[5] == []:
                 enemy = bot
@@ -284,38 +340,74 @@ while True:
             if totalframes - frame_count_hold > 30:
                 curr_fire = False
         message_hold["forward"] = 0
-        if totalframes % 6 == 0 and homeboy != [[],[],[],[],[],[],[]] and enemy != [[],[],[],[],[],[],[]]:
-            if homeboy[5] == yellow:
+        if totalframes % 6 == 5 and homeboy != [[],[],[],[],[],[],[]] and enemy != [[],[],[],[],[],[],[]]:
+            if homeboy[5] == yellow and homeboy[2] != []:
                 if enemy[2] != []:
-                        if ((homeboy[6][0] - enemy[3][0]) ** 2 + (homeboy[6][1] - enemy[3][1]) ** 2) ** 0.5 < 350:
-                            if turn_size(homeboy[5], homeboy[6], enemy[6]) < 0.2:
+                        if ((homeboy[7][0] - enemy[3][0]) ** 2 + (homeboy[7][1] - enemy[3][1]) ** 2) ** 0.5 < 350:
+                            buildStr += "close range "
+                            if turn_size(homeboy[6], homeboy[7], enemy[7]) < 1:
+                                buildStr += "firing "
+                                if not curr_fire:
+                                    message_hold["fire"] = 1
                                 fire = True
                                 message_hold["direction"] = 2
                             else:
-                                message_hold["direction"] = turn_direction(homeboy[5], homeboy[6], enemy[6])
+                                buildStr += "turning "
+                                message_hold["direction"] = turn_direction(homeboy[6], homeboy[7], enemy[7])
                         else:
+                            buildStr += "long range "
                             message_hold["forward"] = min(forward(homeboy[6], enemy[6]), 512)
                             message_hold["direction"] = 2
-                            if turn_size(homeboy[5], homeboy[6], enemy[6]) > 0.2:
-                                message_hold["direction"] = turn_direction(homeboy[5], homeboy[6], enemy[6])
+                            if turn_size(homeboy[5], homeboy[6], enemy[6]) > 0.5:
+                                buildStr += "turning "
+                                message_hold["direction"] = turn_direction(homeboy[6], homeboy[7], enemy[7])
                 else:
-                    if ((homeboy[0][0] - enemy[0][0]) ** 2 + (homeboy[0][1] - enemy[0][1]) ** 2) ** 0.5 < 150:
-                        pass # turn towards enemy, fire weapon, set timer
-                    if ((homeboy[0][0] - enemy[0][0]) ** 2 + (homeboy[0][1] - enemy[0][1]) ** 2) ** 0.5 > 800:
-                        pass # turn towards enemy and advance
+                    buildStr += "no enemy velocity "
+                    if homeboy[2] != []:
+                        if ((homeboy[7][0] - enemy[0][0]) ** 2 + (homeboy[7][1] - enemy[0][1]) ** 2) ** 0.5 < 350:
+                            buildStr += "close range "
+                            if turn_size(homeboy[6], homeboy[7], enemy[0]) < 1:
+                                buildStr += "firing "
+                                if not curr_fire:
+                                    message_hold["fire"] = 1
+                                fire = True
+                                message_hold["direction"] = 2
+                            else:
+                                buildStr += "turning "
+                                message_hold["direction"] = turn_direction(homeboy[6], homeboy[7], enemy[0])
+                        else:
+                            buildStr += "long range "
+                            message_hold["forward"] = min(forward(homeboy[7], enemy[0]), 512)
+                            message_hold["direction"] = 2
+                            if turn_size(homeboy[6], homeboy[7], enemy[0]) > 0.5:
+                                buildStr += "turning "
+                                message_hold["direction"] = turn_direction(homeboy[6], homeboy[7], enemy[0])
                     else:
-                        pass # turn towards enemy
+                        buildStr += "no homeboy velcotity, move forward"
+                        message_hold["direction"] = 2
+                        message_hold["forward"] = 69
+                        message_hold["fire"] = 0
             elif homeboy[5] == orange:
                 print("f")
                 time.sleep(0.5)
                 print("r")
                 time.sleep(0.5)# fire repeatedly
-        if totalframes % 15 == 0:
+            else:
+                buildStr += "no color"
+        if len(maybe) < 2:
+            buildStr = "no enemy"
+            message_hold["direction"] = 2
+            message_hold["forward"] = 0
+            message_hold["fire"] = 0
+        if totalframes % 6 == 5:
             if "direction" in message_hold and "fire" in message_hold:
                 message_str = str(message_hold["direction"]) + " " + str(message_hold["forward"]) + " " + str(message_hold["fire"])
                 message = message_str.encode("UTF-8")
-                sock.sendto(message, ('<broadcast>', PORT))
+                #sock.sendto(message, ('<broadcast>', PORT))
                 print(message_str)
+                print(buildStr)
+                print(maybe)
+                print(" ")
         vel = []
         mini_holder = []
         for bot in maybe:
@@ -323,14 +415,23 @@ while True:
             mini_holder.append(pos)
             vel.append(v)
         '''if vel != [] and vel != [[0.0,0.0],[0.0,0.0]]:
-            print(vel)
-        '''
+        print(vel)'''
         if weapon_timer > 0:
             weapon_timer -= 1
         cv2.imshow("Frame", frame)
         if cv2.waitKey(1) & 0xFF == ord('x'):
             break
+        if cv2.waitKey(1) & 0xFF == ord('p'):
+            while cv2.waitKey(1) & 0xFF != ord('o'):
+                continue
         totalframes += 1
-        print(time.time() - t)
+        pos_hold = [0,0]
+        for bot in maybe:
+            pos, _, _, _, _, _, _, _ = bot
+            if [pos[0], pos[1]] == pos_hold:
+                maybe.remove(bot)
+            else:
+                pos_hold = [pos[0], pos[1]]
+        #print(time.time() - t)
 cap.release()
 cv2.destroyAllWindows()

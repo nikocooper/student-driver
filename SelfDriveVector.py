@@ -98,6 +98,7 @@ message_hold["fire"] = 0
 
 # creates colored rectangles around robots and specific colors on each frame
 while True:
+    t = time.time()
     message = ""
     ret, frame = cap.read()
     if not ret:
@@ -359,5 +360,6 @@ while True:
     cv2.imshow("Frame", frame)
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break
+    print(time.time() - t)
 cap.release()
 cv2.destroyAllWindows()
