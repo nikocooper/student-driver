@@ -67,7 +67,6 @@ together = True
 upright_hold = True
 color_position = []
 color_position_hold = []
-mini_holder = []
 fire = False
 curr_fire = False
 message_hold = dict()
@@ -90,16 +89,20 @@ while True:
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
         # reset tracking every 6 frames if tracking is not good
+        mod = 1
         if totalframes % 6 == 0:
             good_track = True
             for bot in maybe:
-                if bot[1] < 5:
+                if bot[1] < 4 * mod:
                     good_track = False
             if not good_track or totalframes % 24 == 0:
                 maybe = []
                 color_based = False
+                mod = 1
+            else:
+                mod += 1
         v_hold = []
-        pos_hold = []
+        pos_hold = [-100,-100]
         for bot in maybe:
             pos, ct, v, predict, pos_area, color, front, center = bot
             if v_hold == []:
@@ -138,7 +141,7 @@ while True:
                 for position in positions:
                     distance = ((bot[0][0] - position[0]) ** 2 + (bot[0][1] - position[1]) ** 2) ** 0.5
                     if distance < min_distance:
-                        if distance < (v[0] ** 2 + v[1] ** 2) ** 0.5 * 2 if v != [] else 300 and bot[4] - position[2] < 500:
+                        if distance < (bot[2][0] ** 2 + bot[2][1] ** 2) ** 0.5 * 2 if bot[2] != [] else 300 and bot[4] - position[2] < 500:
                             min_distance = distance
                             pos_hold = position
                 if pos_hold != []:
@@ -182,8 +185,6 @@ while True:
             pos, ct, v, predict, pos_area, color, front, center = bot
             x = pos[0]
             y = pos[1]
-            min_distance = 100000
-            pos_hold = []
             center = [int(x + ((pos_area ** 0.5) / 2)), int(y + ((pos_area ** 0.5) / 2))]
             # create velocity and predict next position
             if len(pos) > 2: 
@@ -275,12 +276,11 @@ while True:
                 maybe = [max_bot, color_mem]
             cv2.rectangle(frame, (x1,y1), (x1 + w1, y1 + h1), (255, 0, 150), 3)
         clr2contours, _ = cv2.findContours(clr2mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
         #check for orange
         clr2= False
         for clr2cnt in clr2contours:
             clr2area = cv2.contourArea(clr2cnt)
-            if abs(clr2area - area_hold) < 100 :
+            if abs(clr2area - area_hold) < 100:
                 x2, y2, w2, h2 = cv2.boundingRect(clr2cnt)
                 for bot in maybe:
                     pos, ct, v, predict, pos_area,color, center = bot
@@ -334,10 +334,10 @@ while True:
             frame_count_hold = totalframes
             message_hold["fire"] = 1
         if frame_count_hold > 0:
-            if totalframes - frame_count_hold > 15:
+            if totalframes - frame_count_hold > 6:
                 message_hold["fire"] = 0
                 fire = False
-            if totalframes - frame_count_hold > 30:
+            if totalframes - frame_count_hold > 12:
                 curr_fire = False
         message_hold["forward"] = 0
         if totalframes % 6 == 5 and homeboy != [[],[],[],[],[],[],[]] and enemy != [[],[],[],[],[],[],[]]:
@@ -385,20 +385,30 @@ while True:
                     else:
                         buildStr += "no homeboy velcotity, move forward"
                         message_hold["direction"] = 2
-                        message_hold["forward"] = 69
-                        message_hold["fire"] = 0
+                        if not curr_fire:
+                            message_hold["forward"] = 69
+                            message_hold["fire"] = 0
             elif homeboy[5] == orange:
                 print("f")
                 time.sleep(0.5)
                 print("r")
                 time.sleep(0.5)# fire repeatedly
+            elif homeboy[5] == []:
+                buildStr += "no color, move forward"
             else:
-                buildStr += "no color"
+                buildStr += "no homeboy velocity, move forward"
+                message_hold["direction"] = 2
+                if not curr_fire:
+                    message_hold["forward"] = 69
+                    message_hold["fire"] = 0
         if len(maybe) < 2:
             buildStr = "no enemy"
             message_hold["direction"] = 2
             message_hold["forward"] = 0
             message_hold["fire"] = 0
+        if fire:
+            message_hold["forward"] = 0
+            message_hold["fire"] = 1
         if totalframes % 6 == 5:
             if "direction" in message_hold and "fire" in message_hold:
                 message_str = str(message_hold["direction"]) + " " + str(message_hold["forward"]) + " " + str(message_hold["fire"])
@@ -408,13 +418,11 @@ while True:
                 print(buildStr)
                 print(maybe)
                 print(" ")
-        vel = []
-        mini_holder = []
+        '''vel = []
         for bot in maybe:
             pos, _, v, predict, _, _, _, _ = bot
-            mini_holder.append(pos)
             vel.append(v)
-        '''if vel != [] and vel != [[0.0,0.0],[0.0,0.0]]:
+        if vel != [] and vel != [[0.0,0.0],[0.0,0.0]]:
         print(vel)'''
         if weapon_timer > 0:
             weapon_timer -= 1
@@ -425,7 +433,7 @@ while True:
             while cv2.waitKey(1) & 0xFF != ord('o'):
                 continue
         totalframes += 1
-        pos_hold = [0,0]
+        pos_hold = [-1,-1]
         for bot in maybe:
             pos, _, _, _, _, _, _, _ = bot
             if [pos[0], pos[1]] == pos_hold:
