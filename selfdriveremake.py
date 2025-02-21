@@ -1,20 +1,23 @@
+'''This is an automated control algorithm that takes in webcam footage of a combat
+robotics ring and uses computer vision to track the robots. It tracks color and motion,
+where the color of the robot is used to identify the home robot. The positions and velocities 
+of bots is tracked between frames, and used to make decisions on movement and firing. The 
+algorithm can track any amount of bots at a time, as long as there is only 1 home bot. It uses 
+Bluetooth RFCOMM sockets to communicate with a Raspberry Pi on board the robot. The code on the
+pi must be running first in order to connect.'''
 import cv2 
 import numpy as np
 import time
 import socket
-import math
-import keyboard
 
 # create port for server communication and create socket
-'''PORT = 6666
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)'''
+
 pi_mac_address = "B8:27:EB:D8:81:F0"
-port = 1
+PORT = 1
 sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
 '''while True:
     try:
-        sock.connect((pi_mac_address, port))
+        sock.connect((pi_mac_address, PORT))
         break
     except:
         time.sleep(1)
@@ -558,6 +561,10 @@ while True:
     if fire:
         message_hold["forward"] = 0
         message_hold["fire"] = 1
+    #Output format: "turn forward/backward fire"
+    #0 = counterclockwise, 1 = clockwise
+    #1->512 = forward, 0 = stop, -1-> -512 = backward
+    #0 = no fire, 1 = fire
     if totalframes % 6 == 5:
         if "direction" in message_hold and "fire" in message_hold:
             message_str = str(message_hold["direction"]) + " " + str(message_hold["forward"]) + " " + str(message_hold["fire"])
