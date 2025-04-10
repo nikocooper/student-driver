@@ -73,4 +73,3 @@ while True:
 if cv2.waitKey(1) & 0xFF == ord('x'):
     cap.release()
     cv2.destroyAllWindows()
-
