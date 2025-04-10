@@ -611,4 +611,8 @@ while True:
     sock.sendall(MSG)
     # send commands every 1/6 of a second
     time.sleep(.15)
+<<<<<<< HEAD
 sock.close()
+=======
+sock.close()
+>>>>>>> af4e4e757cb8efbcdcf2900f1dea280a0ea3b59a
