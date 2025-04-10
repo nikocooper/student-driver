@@ -1,5 +1,5 @@
 '''This is a program to be run every time the camera is set up to ensure the region of interest is set correctly.
-The coordinates of the convex hull (region of interest) are saved to a file called convex_hull.npy'''
+The coordinates of the convex hull (region of interest) are saved to a file called ring.npy'''
 import cv2
 import numpy as np
 
@@ -31,12 +31,12 @@ while True:
 
     # Define a wider range for yellow
     lower_yellow = np.array([15, 120, 120])    
-    upper_yellow = np.array([45, 255, 248])  
+    upper_yellow = np.array([25, 223, 248])  
 
     # Create mask for yellow regions
     mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
 
-    #mask[:, :280] = 0  # Optional, based on your original code
+    mask[:, :70] = 0  # Optional, based on your original code
 
     kernel = np.ones((5, 5), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)  # Remove noise
@@ -73,4 +73,3 @@ while True:
 if cv2.waitKey(1) & 0xFF == ord('x'):
     cap.release()
     cv2.destroyAllWindows()
-
